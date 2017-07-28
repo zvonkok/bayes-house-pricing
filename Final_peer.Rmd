@@ -1,0 +1,604 @@
+---
+title: "Peer Assessment II"
+output:
+  html_document: 
+    pandoc_args: [
+      "--number-sections",
+    ]
+---
+
+# Background
+
+As a statistical consultant working for a real estate investment firm, your task is to develop a model to predict the selling price of a given home in Ames, Iowa. Your employer hopes to use this information to help assess whether the asking price of a house is higher or lower than the true value of the house. If the home is undervalued, it may be a good investment for the firm.
+
+# Training Data and relevant packages
+
+In order to better assess the quality of the model you will produce, the data have been randomly divided into three separate pieces: a training data set, a testing data set, and a validation data set. For now we will load the training data set, the others will be loaded and used later.
+
+```{r load, message = FALSE}
+load("ames_train.Rdata")
+```
+
+Use the code block below to load any necessary packages
+
+```{r packages, message = FALSE}
+library(statsr)
+library(dplyr)
+library(ggplot2)
+library(BAS)
+library(MASS)
+library(GGally)
+library(caret)
+library(car)
+```
+
+## Part 1 - Exploratory Data Analysis (EDA)
+
+When you first get your data, it's very tempting to immediately begin fitting models and assessing how they perform.  However, before you begin modeling, it's absolutely essential to explore the structure of the data and the relationships between the variables in the data set.
+
+Do a detailed EDA of the ames_train data set, to learn about the structure of the data and the relationships between the variables in the data set (refer to Introduction to Probability and Data, Week 2, for a reminder about EDA if needed). Your EDA should involve creating and reviewing many plots/graphs and considering the patterns and relationships you see. 
+
+After you have explored completely, submit the three graphs/plots that you found most informative during your EDA process, and briefly explain what you learned from each (why you found each informative).
+
+
+```{r creategraphs, echo=FALSE}
+A <- ames_train
+
+A <- subset(A, select = c(-PID))
+
+# MS.SubClass, Overall.Qual, Overall.Cond, 
+A$MS.SubClass <- as.factor(A$MS.SubClass)
+A$Overall.Qual <- as.factor(A$Overall.Qual)
+A$Overall.Cond <- as.factor(A$Overall.Cond)
+
+na_count <-sapply(A, function(y) sum(length(which(is.na(y)))))
+na_count <- data.frame(na_count)
+na_count$names <- rownames(na_count)
+na_count <- na_count %>% arrange(desc(na_count)) %>% filter(na_count > 0)
+
+na_count
+
+```
+
+```{r datamunging, echo=FALSE}
+add_level <- function(x, lvl)
+{
+	levels(x) <- c(levels(x), lvl)
+	x[is.na(x)] <- lvl
+	x
+}
+add_mean<- function(x)
+{
+	m <- mean(x, na.rm=TRUE)
+	x[is.na(x)] <- floor(m)
+	x
+}
+
+add_median<- function(x)
+{
+	m <- median(x, na.rm = TRUE)
+	x[is.na(x)] <- floor(m)
+	x
+}
+add_int <- function(x, i)
+{
+	x[is.na(x)] <- i
+	x
+}
+
+A$Pool.QC <- add_level(A$Pool.QC, "No")
+A$Misc.Feature <- add_level(A$Misc.Feature, "None")
+A$Alley <- add_level(A$Alley, "NoAccess")
+A$Fence <- add_level(A$Fence, "NoFence")
+A$Fireplace.Qu <- add_level(A$Fireplace.Qu, "NoFireplace")
+#ggplot(A, aes(x=Lot.Frontage)) + geom_histogram()
+A$Lot.Frontage <- add_mean(A$Lot.Frontage)
+#ggplot(A, aes(x=Garage.Yr.Blt)) + geom_histogram()
+A$Garage.Yr.Blt	<- add_median(A$Garage.Yr.Blt)
+A$Garage.Qual <- add_level(A$Garage.Qual, "NoGarage")	
+A$Garage.Cond <- add_level(A$Garage.Cond, "NoGarage")			
+A$Garage.Type <- add_level(A$Garage.Type, "NoGarage")
+A$Garage.Finish <- add_level(A$Garage.Finish, "NoGarage")
+A$Bsmt.Qual <- add_level(A$Bsmt.Qual, "NoBasement")			
+A$Bsmt.Cond  <- add_level(A$Bsmt.Cond, "NoBasement")			
+A$Bsmt.Exposure  <- add_level(A$Bsmt.Exposure, "NoBasement")			
+A$BsmtFin.Type.1  <- add_level(A$BsmtFin.Type.1, "NoBasement")		
+A$BsmtFin.Type.2 <- add_level(A$BsmtFin.Type.2, "NoBasement")			
+#ggplot(A, aes(x=Mas.Vnr.Area)) + geom_histogram()
+A$Mas.Vnr.Area <- add_median(A$Mas.Vnr.Area)
+#ggplot(A, aes(x=BsmtFin.SF.1)) + geom_histogram()
+A$BsmtFin.SF.1 <- add_mean(A$BsmtFin.SF.1)
+#ggplot(A, aes(x=BsmtFin.SF.2)) + geom_histogram()
+A$BsmtFin.SF.2 <- add_mean(A$BsmtFin.SF.2)	
+#ggplot(A, aes(x=Bsmt.Unf.SF)) + geom_histogram()
+A$Bsmt.Unf.SF <- add_median(A$Bsmt.Unf.SF)
+#ggplot(A, aes(x=Total.Bsmt.SF)) + geom_histogram()
+A$Total.Bsmt.SF <- add_mean(A$Total.Bsmt.SF)
+#ggplot(A, aes(x=Bsmt.Full.Bath)) + geom_histogram()
+A$Bsmt.Full.Bath <- add_median(A$Bsmt.Full.Bath)			
+#ggplot(A, aes(x=Bsmt.Half.Bath)) + geom_histogram()
+A$Bsmt.Half.Bath <- add_int(A$Bsmt.Half.Bath, 0)			
+#ggplot(A, aes(x=Garage.Cars)) + geom_histogram()
+A$Garage.Cars <- add_mean(A$Garage.Cars)
+#ggplot(A, aes(x=Garage.Area)) + geom_histogram()
+A$Garage.Area <- add_mean(A$Garage.Area)
+
+na_count <-sapply(A, function(y) sum(length(which(is.na(y)))))
+na_count <- data.frame(na_count)
+na_count$names <- rownames(na_count)
+na_count <- na_count %>% arrange(desc(na_count)) %>% filter(na_count > 0)
+
+na_count
+```
+
+```{r graphs}
+
+FV <- as.data.frame(lapply(A, is.factor)) %>% tidyr::gather() %>% filter(value == TRUE)
+CV <- as.data.frame(lapply(A, is.factor)) %>% tidyr::gather() %>% filter(value == FALSE)
+
+
+for (i in FV[,1])
+{
+	plt <- ggplot(A, aes_string(y="price", x=i)) + geom_boxplot()
+	print(plt)
+}
+
+```
+
+```{r graphs2}
+
+
+for (i in CV[,1])
+{
+	plt <- ggplot(A, aes_string(y="price", x=i)) + geom_point()
+	print(plt)
+}
+
+
+
+
+```
+
+```{r, fig.width=10}
+#ggpairs(A, columns= 1:10)
+# Get lower triangle of the correlation matrix
+  get_lower_tri<-function(cormat){
+    cormat[upper.tri(cormat)] <- NA
+    return(cormat)
+  }
+  # Get upper triangle of the correlation matrix
+  get_upper_tri <- function(cormat){
+    cormat[lower.tri(cormat)]<- NA
+    return(cormat)
+  }
+  
+  reorder_cormat <- function(cormat){
+# Use correlation between variables as distance
+dd <- as.dist((1-cormat)/2)
+hc <- hclust(dd)
+cormat <-cormat[hc$order, hc$order]
+}
+
+cordata <- A[, sapply(A, is.numeric)]
+cormat <- round(cor(cordata), 2)
+
+cormat <- reorder_cormat(cormat)
+upper_tri <- get_upper_tri(cormat)
+
+library(reshape2)
+melted_cormat <- melt(upper_tri, na.rm = TRUE)
+
+
+ggplot(data = melted_cormat, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+   name="Pearson\nCorrelation") +
+ theme(axis.text.x = element_text(angle = 90))+
+ coord_fixed()
+
+upper_tri[order(upper_tri[,"price"], decreasing = T),"price"]
+
+```
+
+
+
+``` {r}
+isnum <- A[, sapply(A, is.numeric)]
+nearZeroVar(isnum,  saveMetrics = T)
+
+lapply(A, function(x) length(unique(x))) < 2
+
+A <- subset(A, select = c(-Utilities))
+```
+
+```{r, fig.width=9 }
+
+
+library(vcd)
+catcorrm <- function(vars, dat) sapply(vars, function(y) sapply(vars, function(x) assocstats(table(unlist(dat[,x]), unlist(dat[,y])))$cramer))
+
+newrow <- c("price", TRUE)
+FV <- rbind(FV, newrow)
+
+
+cormat <- catcorrm(FV[,1], A)
+cormat[!is.finite(cormat)] <- 0
+cormat <- reorder_cormat(cormat)
+upper_tri <- get_upper_tri(cormat)
+
+library(reshape2)
+melted_cormat <- melt(upper_tri, na.rm = TRUE)
+
+ggplot(data = melted_cormat, aes(Var2, Var1, fill = value))+
+ geom_tile(color = "white")+
+ scale_fill_gradient2(low = "blue", high = "red", mid = "white", 
+   midpoint = 0, limit = c(-1,1), space = "Lab", 
+   name="Cramers V") +
+ theme(axis.text.x = element_text(angle = 90))+
+ coord_fixed()
+
+
+cormat[order(cormat[,"price"], decreasing = T),"price"]
+
+```
+
+* * *
+
+## Part 2 - Development and assessment of an initial model, following a semi-guided process of analysis
+
+### Section 2.1 An Initial Model
+In building a model, it is often useful to start by creating a simple, intuitive initial model based on the results of the exploratory data analysis. (Note: The goal at this stage is **not** to identify the "best" possible model but rather to choose a reasonable and understandable starting point. Later you will expand and revise this model to create your final model.
+
+Based on your EDA, select *at most* 10 predictor variables from “ames_train” and create a linear model for `price` (or a transformed version of price) using those variables. Provide the *R code* and the *summary output table* for your model, a *brief justification* for the variables you have chosen, and a *brief discussion* of the model results in context (focused on the variables that appear to be important predictors and how they relate to sales price).
+
+
+
+```{r fit_model, fig.height=9}
+library(car)
+# numeric
+# area     Garage.Cars     Garage.Area      Year.Built  Year.Remod.Add
+# 0.71            0.66            0.65            0.58            0.56
+# 
+# factor
+#  Overall.Qual    Garage.Qual    Central.Air   Kitchen.Qual   Lot.Shape    
+#  0.9023713      0.8366919      0.8331718      0.8067357      0.8057532      
+
+var10 <- bas.lm(price ~ area + Garage.Cars + Garage.Area + Year.Built + Year.Remod.Add + 
+		Overall.Qual + Garage.Qual + Central.Air + Kitchen.Qual + Lot.Shape, 
+		data=A, method='BAS', prior='ZS-null', modelprior=uniform(), initprobs="eplogp")
+image(var10, rotate=F)
+plot(var10, ask=F)
+
+
+var10 <- lm(price~area+Garage.Cars+Garage.Area+Year.Built+Year.Remod.Add+Overall.Qual+Garage.Qual+Central.Air+Kitchen.Qual+Lot.Shape, A)
+
+summary(var10)
+
+var11 <- lm(price~area+Garage.Area+Year.Built+Year.Remod.Add+Overall.Qual+Garage.Qual+Central.Air+Kitchen.Qual+Lot.Shape, A)
+summary(var11)
+
+var12 <- lm(price~area+Garage.Area+Year.Built+Year.Remod.Add+Overall.Qual+Central.Air+Kitchen.Qual+Lot.Shape, A)
+
+summary(var12)
+
+
+
+boxcox(var10,lambda = seq(0.1, 0.3, length = 10))
+
+var10log <- lm(log(price) ~ area + Garage.Area +  Year.Built + Year.Remod.Add + 
+	       	            Overall.Qual + Garage.Qual + Central.Air + Kitchen.Qual + Lot.Shape, A)
+
+summary(var10log)
+
+AIC(var10log)
+
+plot(var10log)
+
+# Null values elimination for boxTidwell
+B <- A
+B$Garage.Cars <- B$Garage.Cars + 0.00001
+B$Garage.Area <- B$Garage.Area + 0.00001
+
+boxTidwell(log(price) ~ area + Garage.Area + Year.Built + Year.Remod.Add, 
+	   other.x = ~ Overall.Qual + Garage.Qual + Central.Air + Kitchen.Qual + Lot.Shape, data=B )
+
+summary(lm(log(price) ~ log(area) + Garage.Cars + Garage.Area + Year.Built + Year.Remod.Add + 
+	   	        Overall.Qual + Garage.Qual + Central.Air + Kitchen.Qual + Lot.Shape, A))
+
+
+```
+
+* * *
+
+### Section 2.2 Model Selection
+
+Now either using `BAS` another stepwise selection procedure choose the "best" model you can, using your initial model as your starting point. Try at least two different model selection methods and compare their results. Do they both arrive at the same model or do they disagree? What do you think this means?
+
+* * *
+
+NOTE: Write your written response to section 2.2 here. Delete this note before you submit your work.
+
+```{r model_select, fig.height=9}
+
+A1 <- A  %>% mutate(price = log(price))
+A1 <- A1 %>% mutate(area = log(area))
+
+m <- bas.lm(price~area+Garage.Cars+Garage.Area+Year.Built+Year.Remod.Add+Overall.Qual+Garage.Qual+Central.Air+Kitchen.Qual+Lot.Shape, data=A, method='MCMC', prior='ZS-null',  modelprior=uniform(), initprobs="eplogp")
+
+image(m, rotate=F)
+summary(m)
+
+m1 <- bas.lm(price ~ area            +  MS.SubClass     +  MS.Zoning       +  Lot.Frontage    +  Lot.Area        + Sale.Condition +
+	     	     Street          +  Alley           +  Lot.Shape       +  Land.Contour    +  Lot.Config      +  Land.Slope + 
+	     	 Neighborhood    +  Condition.1     +  Condition.2,
+	     data=A, method='MCMC', prior='ZS-null',  modelprior=uniform(), initprobs="eplogp")
+
+image(m1, rotate=F)
+summary(m1)
+
+```
+
+```{r model_lm}
+
+
+fm <- lm(price ~ area            +  MS.SubClass     +  MS.Zoning       +  Lot.Frontage    +  Lot.Area        + Sale.Condition   + 
+ 		 Street          +  Alley           +  Lot.Shape       +  Land.Contour    +  Lot.Config      +  Land.Slope      + 
+ 		 Neighborhood    +  Condition.1     +  Condition.2     +  Bldg.Type       +  House.Style     +  Overall.Qual    + 
+ 		 Overall.Cond    +  Year.Built      +  Year.Remod.Add  +  Roof.Style      +  Roof.Matl       +  Exterior.1st    + 
+ 		 Exterior.2nd    +  Mas.Vnr.Type    +  Mas.Vnr.Area    +  Exter.Qual      +  Exter.Cond      +  Foundation      + 
+ 		 Bsmt.Qual       +  Bsmt.Cond       +  Bsmt.Exposure   +  BsmtFin.Type.1  +  BsmtFin.SF.1    +  BsmtFin.Type.2  + 
+ 		 BsmtFin.SF.2    +  Bsmt.Unf.SF     +  Total.Bsmt.SF   +  Heating         +  Heating.QC      +  Central.Air     + 
+ 		 Electrical      +  X1st.Flr.SF     +  X2nd.Flr.SF     +  Low.Qual.Fin.SF +  Bsmt.Full.Bath  +  Bsmt.Half.Bath  + 
+ 		 Full.Bath       +  Half.Bath       +  Bedroom.AbvGr   +  Kitchen.AbvGr   +  Kitchen.Qual    +  TotRms.AbvGrd   + 
+ 		 Functional      +  Fireplaces      +  Fireplace.Qu    +  Garage.Type     +  Garage.Yr.Blt   +  Garage.Finish   + 
+ 		 Garage.Cars     +  Garage.Area     +  Garage.Qual     +  Garage.Cond     +  Paved.Drive     +  Wood.Deck.SF    + 
+ 	 	 Open.Porch.SF   +  Enclosed.Porch  +  X3Ssn.Porch     +  Screen.Porch    +  Pool.Area       +  Pool.QC         + 
+ 		 Fence           +  Misc.Feature    +  Misc.Val        +  Mo.Sold         +  Yr.Sold         +  Sale.Type, A1)       
+ 
+summary(fm) # Adjusted R-squared:  0.9357
+summary(fm)$adj.r.squared
+
+# - Exterior.1st
+fm <- lm(price ~ area            +  MS.SubClass     +  MS.Zoning       +  Lot.Frontage    +  Lot.Area        + Sale.Condition   + 
+ 		 Street          +  Alley           +  Lot.Shape       +  Land.Contour    +  Lot.Config      +  Land.Slope      + 
+ 		 Neighborhood    +  Condition.1     +  Condition.2     +  Bldg.Type       +  House.Style     +  Overall.Qual    + 
+ 		 Overall.Cond    +  Year.Built      +  Year.Remod.Add  +  Roof.Style      +  Roof.Matl       +
+ 		 Exterior.2nd    +  Mas.Vnr.Type    +  Mas.Vnr.Area    +  Exter.Qual      +  Exter.Cond      +  Foundation      + 
+ 		 Bsmt.Qual       +  Bsmt.Cond       +  Bsmt.Exposure   +  BsmtFin.Type.1  +  BsmtFin.SF.1    +  BsmtFin.Type.2  + 
+ 		 BsmtFin.SF.2    +  Bsmt.Unf.SF     +  Total.Bsmt.SF   +  Heating         +  Heating.QC      +  Central.Air     + 
+ 		 Electrical      +  X1st.Flr.SF     +  X2nd.Flr.SF     +  Low.Qual.Fin.SF +  Bsmt.Full.Bath  +  Bsmt.Half.Bath  + 
+ 		 Full.Bath       +  Half.Bath       +  Bedroom.AbvGr   +  Kitchen.AbvGr   +  Kitchen.Qual    +  TotRms.AbvGrd   + 
+ 		 Functional      +  Fireplaces      +  Fireplace.Qu    +  Garage.Type     +  Garage.Yr.Blt   +  Garage.Finish   + 
+ 		 Garage.Cars     +  Garage.Area     +  Garage.Qual     +  Garage.Cond     +  Paved.Drive     +  Wood.Deck.SF    + 
+ 	 	 Open.Porch.SF   +  Enclosed.Porch  +  X3Ssn.Porch     +  Screen.Porch    +  Pool.Area       +  Pool.QC         + 
+ 		 Fence           +  Misc.Feature    +  Misc.Val        +  Mo.Sold         +  Yr.Sold         +  Sale.Type, A1)       
+ 
+summary(fm) # Adjusted R-squared:  0.9358861
+summary(fm)$adj.r.squared
+
+# - Exterior.1st
+fm <- lm(price ~ area            +  MS.SubClass     +  MS.Zoning       +  Lot.Frontage    +  Lot.Area        + Sale.Condition   + 
+ 		 Street          +  Alley           +  Lot.Shape       +  Land.Contour    +  Lot.Config      +  Land.Slope      + 
+ 		 Neighborhood    +  Condition.1     +  Condition.2     +  Bldg.Type       +  House.Style     +  Overall.Qual    + 
+ 		 Overall.Cond    +  Year.Built      +  Year.Remod.Add  +  Roof.Style      +  Roof.Matl       +
+ 		 Exterior.2nd    +  Mas.Vnr.Type    +  Mas.Vnr.Area    +  Exter.Qual      +  Exter.Cond      +  Foundation      + 
+ 		 Bsmt.Qual       +  Bsmt.Cond       +  Bsmt.Exposure   +  BsmtFin.Type.1  +  BsmtFin.SF.1    +  BsmtFin.Type.2  + 
+ 		 BsmtFin.SF.2    +  Bsmt.Unf.SF     +  Total.Bsmt.SF   +  Heating         +  Heating.QC      +  Central.Air     + 
+ 		                    X1st.Flr.SF     +  X2nd.Flr.SF     +  Low.Qual.Fin.SF +  Bsmt.Full.Bath  +  Bsmt.Half.Bath  + 
+ 		 Full.Bath       +  Half.Bath       +  Bedroom.AbvGr   +  Kitchen.AbvGr   +  Kitchen.Qual    +  TotRms.AbvGrd   + 
+ 		 Functional      +  Fireplaces      +  Fireplace.Qu    +  Garage.Type     +  Garage.Yr.Blt   +  Garage.Finish   + 
+ 		 Garage.Cars     +  Garage.Area     +  Garage.Qual     +  Garage.Cond     +  Paved.Drive     +  Wood.Deck.SF    + 
+ 	 	 Open.Porch.SF   +  Enclosed.Porch  +  X3Ssn.Porch     +  Screen.Porch    +  Pool.Area       +  Pool.QC         + 
+ 		 Fence           +  Misc.Feature    +  Misc.Val        +  Mo.Sold         +  Yr.Sold         +  Sale.Type, A1)       
+ 
+summary(fm)$adj.r.squared #0.9361196
+summary(fm)
+
+
+fm <- lm(price ~ area            +  MS.SubClass     +  MS.Zoning       +  Lot.Frontage    +  Lot.Area        + Sale.Condition   + 
+ 		 Street                             +  Lot.Shape       +  Land.Contour    +  Lot.Config      +  Land.Slope      + 
+ 		 Neighborhood    +  Condition.1     +  Condition.2     +  Bldg.Type       +  House.Style     +  Overall.Qual    + 
+ 		 Overall.Cond    +  Year.Built      +  Year.Remod.Add                     +  Roof.Matl       +
+ 		 Exterior.2nd    +                                        Exter.Qual      +  Exter.Cond      +  
+ 		 Bsmt.Qual       +  Bsmt.Cond       +  Bsmt.Exposure   +  BsmtFin.Type.1  +  BsmtFin.SF.1    +  BsmtFin.Type.2  + 
+ 		 BsmtFin.SF.2    +  Bsmt.Unf.SF     +  Total.Bsmt.SF   +  Heating         +  Heating.QC      +  Central.Air     + 
+ 		                    X1st.Flr.SF     +  X2nd.Flr.SF     +  Low.Qual.Fin.SF +  Bsmt.Full.Bath  +  Bsmt.Half.Bath  + 
+ 		 Full.Bath       +  Half.Bath       +  Bedroom.AbvGr   +  Kitchen.AbvGr   +  Kitchen.Qual    +  TotRms.AbvGrd   + 
+ 		 Functional      +  Fireplaces      +                     Garage.Type     +  Garage.Yr.Blt   +  Garage.Finish   + 
+ 		 Garage.Cars     +  Garage.Area     +  Garage.Qual     +  Garage.Cond     +  Paved.Drive     +  Wood.Deck.SF    + 
+ 	 	 Open.Porch.SF   +  Enclosed.Porch  +  X3Ssn.Porch     +  Screen.Porch    +  Pool.Area       +  Pool.QC         + 
+ 		 Fence           +  Misc.Feature    +  Misc.Val        +  Mo.Sold         +  Yr.Sold         +  Sale.Type, A1)       
+ 
+summary(fm)$adj.r.squared #0.9366262
+summary(fm)
+
+
+
+```
+
+* * *
+
+### Section 2.3 Initial Model Residuals
+One way to assess the performance of a model is to examine the model's residuals. In the space below, create a residual plot for your preferred model from above and use it to assess whether your model appears to fit the data well. Comment on any interesting structure in the residual plot (trend, outliers, etc.) and briefly discuss potential implications it may have for your model and inference / prediction you might produce.
+
+* * *
+
+NOTE: Write your written response to section 2.3 here. Delete this note before you submit your work.
+
+```{r model_resid}
+```
+
+* * *
+
+### Section 2.4 Initial Model RMSE
+
+You can calculate it directly based on the model output. Be specific about the units of your RMSE (depending on whether you transformed your response variable). The value you report will be more meaningful if it is in the original units (dollars).
+
+* * *
+
+NOTE: Write your written response to section 2.4 here. Delete this note before you submit your work.
+
+
+```{r model_rmse}
+```
+
+* * *
+
+### Section 2.5 Overfitting 
+
+The process of building a model generally involves starting with an initial model (as you have done above), identifying its shortcomings, and adapting the model accordingly. This process may be repeated several times until the model fits the data reasonably well. However, the model may do well on training data but perform poorly out-of-sample (meaning, on a dataset other than the original training data) because the model is overly-tuned to specifically fit the training data. This is called “overfitting.” To determine whether overfitting is occurring on a model, compare the performance of a model on both in-sample and out-of-sample data sets. To look at performance of your initial model on out-of-sample data, you will use the data set `ames_test`.
+
+```{r loadtest, message = FALSE}
+load("ames_test.Rdata")
+```
+
+Use your model from above to generate predictions for the housing prices in the test data set.  Are the predictions significantly more accurate (compared to the actual sales prices) for the training data than the test data?  Why or why not? Briefly explain how you determined that (what steps or processes did you use)?
+
+* * *
+
+NOTE: Write your written response to section 2.5 here. Delete this note before you submit your work.
+
+```{r initmodel_test}
+```
+
+* * *
+
+**Note to the learner:** If in real-life practice this out-of-sample analysis shows evidence that the training data fits your model a lot better than the test data, it is probably a good idea to go back and revise the model (usually by simplifying the model) to reduce this overfitting. For simplicity, we do not ask you to do this on the assignment, however.
+
+## Part 3 Development of a Final Model
+
+Now that you have developed an initial model to use as a baseline, create a final model with *at most* 20 variables to predict housing prices in Ames, IA, selecting from the full array of variables in the dataset and using any of the tools that we introduced in this specialization.  
+
+Carefully document the process that you used to come up with your final model, so that you can answer the questions below.
+
+### Section 3.1 Final Model
+
+Provide the summary table for your model.
+
+* * *
+
+NOTE: Write your written response to section 3.1 here. Delete this note before you submit your work.
+
+
+```{r model_playground}
+```
+
+* * *
+
+### Section 3.2 Transformation
+
+Did you decide to transform any variables?  Why or why not? Explain in a few sentences.
+
+* * *
+
+NOTE: Write your written response to section 3.2 here. Delete this note before you submit your work.
+
+```{r model_assess}
+```
+
+* * *
+
+### Section 3.3 Variable Interaction
+
+Did you decide to include any variable interactions? Why or why not? Explain in a few sentences.
+
+* * *
+
+NOTE: Write your written response to section 3.3 here. Delete this note before you submit your work.
+
+```{r model_inter}
+```
+
+* * *
+
+### Section 3.4 Variable Selection
+
+What method did you use to select the variables you included? Why did you select the method you used? Explain in a few sentences.
+
+* * *
+
+NOTE: Write your written response to section 3.4 here. Delete this note before you submit your work.
+
+```{r model_select}
+```
+
+* * *
+
+### Section 3.5 Model Testing
+
+How did testing the model on out-of-sample data affect whether or how you changed your model? Explain in a few sentences.
+
+* * *
+
+NOTE: Write your written response to section 3.5 here. Delete this note before you submit your work.
+
+```{r model_testing}
+```
+
+* * *
+
+## Part 4 Final Model Assessment
+
+### Section 4.1 Final Model Residual
+
+For your final model, create and briefly interpret an informative plot of the residuals.
+
+* * *
+
+NOTE: Write your written response to section 4.1 here. Delete this note before you submit your work.
+
+* * *
+
+### Section 4.2 Final Model RMSE
+
+For your final model, calculate and briefly comment on the RMSE.
+
+* * *
+
+NOTE: Write your written response to section 4.2 here. Delete this note before you submit your work.
+
+* * *
+
+### Section 4.3 Final Model Evaluation
+
+What are some strengths and weaknesses of your model?
+
+* * *
+
+NOTE: Write your written response to section 4.3 here. Delete this note before you submit your work.
+
+* * *
+
+### Section 4.4 Final Model Validation
+
+Testing your final model on a separate, validation data set is a great way to determine how your model will perform in real-life practice. 
+
+You will use the “ames_validation” dataset to do some additional assessment of your final model. Discuss your findings, be sure to mention:
+* What is the RMSE of your final model when applied to the validation data?  
+* How does this value compare to that of the training data and/or testing data?
+* What percentage of the 95% predictive confidence (or credible) intervals contain the true price of the house in the validation data set?  
+* From this result, does your final model properly reflect uncertainty?
+
+```{r loadvalidation, message = FALSE}
+load("ames_validation.Rdata")
+```
+
+* * *
+
+NOTE: Write your written response to section 4.4 here. Delete this note before you submit your work.
+
+```{r model_validate}
+```
+
+* * *
+
+## Part 5 Conclusion
+
+Provide a brief summary of your results, and a brief discussion of what you have learned about the data and your model. 
+
+* * *
+
+NOTE: Write your written response to part 5 here. Delete this note before you submit your work.
+
+* * *

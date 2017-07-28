@@ -1,0 +1,418 @@
+---
+title: "Exploratory Data Analysis"
+output:
+  github_document 
+---
+
+First, let us load the data and necessary packages:
+
+```{r load, message = FALSE}
+load("ames_train.Rdata")
+library(MASS)
+library(BAS)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggthemes)
+library(GGally)
+
+A <- ames_train
+```
+
+```{r multiplot, echo=FALSE, cache=T}
+# Multiple plot function
+#
+# ggplot objects can be passed in ..., or to plotlist (as a list of ggplot objects)
+# - cols:   Number of columns in layout
+# - layout: A matrix specifying the layout. If present, 'cols' is ignored.
+#
+# If the layout is something like matrix(c(1,2,3,3), nrow=2, byrow=TRUE),
+# then plot 1 will go in the upper left, 2 will go in the upper right, and
+# 3 will go all the way across the bottom.
+#
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  library(grid)
+
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+```
+
+# Ages of the Houses
+
+Make a labeled histogram (with 30 bins) of the ages of the houses in the data set, and describe the distribution.
+
+```{r Q1, fig.width=9}
+# overlay histogram and normal density
+
+A <- A %>% mutate(Age=(2017 - Year.Built))  
+
+mean_A <- mean(A$Age)
+sd_A <- sd(A$Age)
+  
+ggplot(A, aes(x=Age)) +
+	stat_bin(aes(y = ..density.., fill=..count..), bins = 30, binwidth=4.5) +
+  	stat_function(fun = dnorm, args = list(mean = mean_A, sd = sd_A), aes(color="Normal Distrib.")) + 
+	geom_density(kernel="gaussian", aes(color = "Density Estimate")) + 
+	geom_vline(aes(color = "Mean Age", xintercept = mean_A)) + 
+	scale_colour_manual("Legend", 
+			values =  c("Normal Distrib."="orangered2", "Density Estimate"="slateblue2", "Mean Age"="palegreen3")) +
+	ggtitle("Histogram (with 30 bins) of the ages of the houses") + 
+	scale_x_continuous(breaks=seq(0, 150, by=5))
+
+```
+
+The distribution of house ages is tri-modal. There are three peaks as seen by the
+density estimate. The youngest house is `r min(A$Age)` years and the oldest is
+`r max(A$Age)` years old, with a mean at `r mean_A` years. The three peaks 
+correspond to (1) ~15 years the (2) at ~47 years and the last (3) at ~ 95 years
+of age. 
+
+The most houses have an age of  < 15 years, the economy is flourishing and the GDP
+is rising since the 2000's recession which explains the (1) peak. The early
+1970's were a golden era of american capitalism, were middle class swelled as 
+well as the GDP and productivity, that explains the (2) peak.  The 1920's a.k.a 
+"Roaring Twenties" were also a economical stable and strong time, which resulted
+in more house building which is visible in the (3) peak. In summary the 
+distribution peaks are oriented towards the economical circumstances and not to
+a specific distribution.
+
+The distribution does not assemble a  normal distribution as clearly seen in the
+chart where the red line represents the normal distribution of this data with
+mean=`r mean_A` and sd=`r sd_A`. 
+
+For the timespan that is examined here the distribution looks right skewed. 
+Economy rises, people are getting wealthier and hence can build more houses. 
+
+100 years ago only a few people could afford to build a house an so there 
+are not a lot houses recorded in that time. 
+
+\fb{Question 1 (5 points).
+Must include a correctly labeled plot, and mention at least three relevant 
+features of the distribution.}
+
+# Location, Location, Location
+
+The mantra in real estate is "Location, Location, Location!" Make a graphical display that relates a home price to its neighborhood in Ames, Iowa. Which summary statistics are most appropriate to use for determining the most expensive, least expensive, and most heterogeneous (having the most variation in housing price) neighborhoods? Report which neighborhoods these are based on the summary statistics of your choice. Report the value of your chosen summary statistics for these neighborhoods.
+
+
+```{r Q2, fig.width=9}
+A <- ames_train
+
+ggplot(A, aes(x=Neighborhood, y=price)) + 
+	geom_boxplot() + 
+	theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+
+```
+
+The plot reveals that there are three neighborhoods with high variation in house
+prices, namely Timber, StoneBr and NridgHt. Another thing to consider here is 
+that there are a lot of outliers. Why? Because in every neighboorhood you will 
+find more expensive and cheaper Houses than the average.
+
+Two anwser the further question lets have a look a the distribution of the prices. 
+This will anwser the question if one should use the mean of the median for 
+further investigation.
+
+```{r Q2.1, fig.width=9}
+ggplot(A, aes(x=price)) + 
+	stat_bin(aes(y = ..density.., fill=..count..), bins=40) +
+  	stat_function(fun = dnorm, args = list(mean = mean(A$price), sd = sd(A$price)), aes(color="Normal Distrib.")) +
+	geom_density(kernel="gaussian", aes(color = "Density Estimate")) +
+	geom_vline(aes(color = "Mean Price", xintercept = mean(A$price))) + 
+	scale_colour_manual("Legend", 
+			values =  c("Normal Distrib."="orangered2", "Density Estimate"="slateblue2", "Mean Price"="palegreen3")) +
+	ggtitle("Histogram (with 40 bins) of the price of the houses") 
+```
+
+
+Since the distributio is right skewed one is advices to use the median. The 
+median is better suited for skewed distributions to derive at central tendency 
+since it is much more robust and sensible.
+
+```{r Q2.2}
+median_A <- A %>% group_by(Neighborhood) %>% summarise(med=median(price))
+max_A <- median_A[median_A$med == max(median_A$med),]
+min_A <- median_A[median_A$med == min(median_A$med),]
+var_A <- A %>% group_by(Neighborhood) %>% summarise(var=var(price)) %>% arrange(desc(var))
+```
+The most expensive neighborhood is `r max_A[,1]` with a median price of `r format(round(max_A[,2],2), nsmall=2) `.
+The chepeast neighborhood is `r min_A[,1]` with a median price of `r format(round(min_A[,2],2), nsmall=2) `.
+The neighboorhood with the highest variance is `r var_A[1,1]` with a variance of prices `r format(round(var_A[1,2],2), nsmall=2) `.
+
+\fb{
+
+Must include a graphic that is understandable, accurate, relevant to the question, and aesthetically pleasing. Also provide the correct summary statistics for the most expensive, least expensive and the most heterogenous neighborhoods, identify the correct neighborhoods and give the correct value of the summary statistics for each of those.
+
+}
+
+# Missing Values
+
+Which variable has the largest number of missing values? Explain why it makes sense that there are so many missing values for this variable.
+
+```{r Q3}
+A <- ames_train
+isna <- colSums(is.na(A))
+isna[match(max(colSums(is.na(A))), isna)]
+
+```
+
+The variable with the larges number of missing values is =Pool.QC= which describes
+the quality of the pool. Having a look at the description of the variable to see
+what NA means, yields that a house with a Pool.QC == NA means there is no pool.
+
+Since only a few people are wealthy enought to afford a pool, compared to the
+number of people living in the neighboorhood, it is comprehensible why there are
+so many NA's.
+
+```{r Q3.1}
+A <- ames_train
+
+pools <- sum(!is.na(A$Pool.QC))
+
+pool <- A %>% group_by(Neighborhood) %>% summarise(pool=sum(!is.na(Pool.QC))) 
+nopool <- A %>% group_by(Neighborhood) %>% summarise(nopool=sum(is.na(Pool.QC))) 
+med <- A %>% group_by(Neighborhood) %>% summarise(med=median(price))
+rows <- A %>% group_by(Neighborhood) %>% summarise(n = n())
+
+head(n = 10, cbind(med[,1:2], nopool[,2], pool[,2], rows[,2]) %>% arrange(desc(nopool)))
+```
+
+Among all neighboorhoods there are only `r pools` pools. The number of NA's
+is equal to the number of houses in the respective neighborhood. Additionally
+the pools are not located in the most expensive neighborhood. 
+
+\fb{
+Must specify the correct variable and give the correct explanation for why that variable has such a large number of missing values.
+}
+
+# Prediction of the home prices
+
+We want to predict the natural log of the home prices. Candidate explanatory variables are lot size in square feet (Lot.Area), slope of property (Land.Slope), original construction date (Year.Built), remodel date (Year.Remod.Add), and the number of bedrooms above grade (Bedroom.AbvGr). Pick a model selection or model averaging method covered in the Specialization, and describe how this method works. Then, use this method to find the best multiple regression model for predicting the natural log of the home prices.
+
+But first lets examine if there are highly correlated variables. Collinearity
+can change the coefficient estimates erratically in response to small changes 
+in the model or the data. 
+```{r Q4, cache=TRUE, fig.width=9, fig.height=9}
+A <- ames_train
+B <- subset(A, select = c(price, Lot.Area, Land.Slope, Year.Built, Year.Remod.Add,Bedroom.AbvGr))
+B <- B %>% mutate(price = log(price))
+ggpairs(B, axisLabels = "none", mapping = ggplot2::aes(color = Land.Slope))
+```
+
+There are no collinear variables so one can proceed with the model selection
+process. 
+
+For the model selection the forward selection method will be used. Starting with
+an empty model one will add one predictor at a time until the parsimonious model
+is reached. A hybrid approach will be used depending on p-value and adjusted 
+r squared. Lets start with =Lot.Area= and add a variable at a time.
+
+```{r Q4.1, cache=TRUE}
+M0 <- lm(price~Lot.Area, data=B)
+M1 <- lm(price~Lot.Area + Land.Slope, data=B)
+M2 <- lm(price~Lot.Area + Land.Slope + Year.Built, data=B)
+M3 <- lm(price~Lot.Area + Land.Slope + Year.Built + Year.Remod.Add, data=B)
+M4 <- lm(price~Lot.Area + Land.Slope + Year.Built + Year.Remod.Add + Bedroom.AbvGr, data=B)
+M <- lm(price~., data=B)
+```
+
+```{r Q4.1.1, echo=F}
+paste("price~Lot.Area                                                            R^2: ", summary(M0)$adj.r.squared)
+paste("price~Lot.Area + Land.Slope                                               R^2: ", summary(M1)$adj.r.squared)
+paste("price~Lot.Area + Land.Slope + Year.Built                                  R^2: ", summary(M2)$adj.r.squared)
+paste("price~Lot.Area + Land.Slope + Year.Built + Year.Remod.Add                 R^2: ", summary(M3)$adj.r.squared)
+paste("price~Lot.Area + Land.Slope + Year.Built + Year.Remod.Add + Bedroom.AbvGr R^2: ", summary(M4)$adj.r.squared)
+paste("price~.                                                                   R^2: ", summary(M)$adj.r.squared)
+```
+
+Adding a variable at a time it is visible that R^2 is rising. Using all suggested
+variables into the model one has the highest R^2 value. Lets check our model 
+with another approach and do the bayesian approach. 
+
+```{r Q4.4, cache=TRUE}
+bas = bas.lm(price~.,
+	     data=B,
+	     prior="ZS-null", 
+	     modelprior=uniform(), initprobs="eplogp")
+summary(bas)
+```
+
+The summary shows that one should include every variable in the bayesian model 
+selection. The resulting R^2 is about 0.5625.
+
+\fb{
+
+Must choose one of the model selection methods covered in the Specialization, include a correct description of how the chosen model selection method works, and include the best multiple regression model (determined by using that method) for predicting the natural log of home prices.
+}
+
+# Model diagnostics
+
+Which home has the largest squared residual in the previous analysis (Question 4)? Looking at all the variables in the data set, can you explain why this home stands out from the rest (what factors contribute to the high squared residual and why are those factors relevant)?
+
+To see if there are outliers one should generate the standard diagnostic plots of the model.
+
+```{r Q5, fig.width=9, fig.height=9, cache=T}
+par(mfrow=c(2,2))
+plot(M)
+ggnostic(M, mapping = ggplot2::aes(color = Lot.Area))
+```
+
+Looking at the 'Residuals vs. Fitted' and the 'Normal-Q-Q' plot it is evident
+that the home with index =428= has the highest squared residual `r max(abs(M$residuals))`. 
+
+Lets have a look at that home and how it compares to the others.
+
+```{r Q5.1.1, fig.width=9, fig.height=9, cache=T}
+C <- B
+mean_pr <- C %>% filter(Year.Built < 1930 & Year.Remod.Add < 1980)%>% summarise(mn=mean(price))
+C[428,]$price <- mean_pr[[1]]
+
+MC <- lm(price~., data=C)
+max_resid <- max(abs(MC$residuals))
+par(mfrow=c(2,2))
+plot(MC)
+
+ggnostic(MC, mapping = ggplot2::aes(color = Lot.Area))
+```
+
+Compared to the other houses the house with the highest residual has a significant
+lower price than the other compared houses. After testing each describing variable, 
+where each describing variable was set to the corresponding mean of similar houses
+the residual was not reduced. 
+
+This means that the model is predicting a higher price for the features this house
+has. If the price is set to the mean of similar houses the examined house has
+no more the highest residual. The houses with new highest residual are 998 and 645
+as seen in the 'Residuals vs. Fitted' plot. 
+
+There are still some leverage points as seen in the diagnostics plot (hat) and in
+the cooks distance plot for each explanatory variables.
+
+The new highest squared residual `r max(abs(MC$residuals))` vs the old `r max(abs(M$residuals))`
+
+\fb{
+
+Must identify the home with the largest squared residual, specify the correct factors that contribute to the high squared residual and correctly explain why those factors impacted the squared residual.
+}
+
+
+# Model Selection log(Lot.Area)
+
+Use the same model selection method you chose in Question 4 to again find the best multiple regression model to predict the natural log of home prices, but this time **replacing Lot.Area with log(Lot.Area)**. Do you arrive at a model including the same set of predictors?
+
+
+
+```{r Q6}
+D <- B %>% mutate(Lot.Area = log(Lot.Area))
+N0 <- lm(price~Lot.Area, data=D)
+N1 <- lm(price~Lot.Area + Land.Slope, data=D)
+N2 <- lm(price~Lot.Area + Land.Slope + Year.Built, data=D)
+N3 <- lm(price~Lot.Area + Land.Slope + Year.Built + Year.Remod.Add, data=D)
+N4 <- lm(price~Lot.Area + Land.Slope + Year.Built + Year.Remod.Add + Bedroom.AbvGr, data=D)
+N <- lm(price~., data=D)
+```
+
+```{r Q6.1, echo=F}
+paste("price~Lot.Area                                                            R^2: ", summary(N0)$adj.r.squared)
+paste("price~Lot.Area + Land.Slope                                               R^2: ", summary(N1)$adj.r.squared)
+paste("price~Lot.Area + Land.Slope + Year.Built                                  R^2: ", summary(N2)$adj.r.squared)
+paste("price~Lot.Area + Land.Slope + Year.Built + Year.Remod.Add                 R^2: ", summary(N3)$adj.r.squared)
+paste("price~Lot.Area + Land.Slope + Year.Built + Year.Remod.Add + Bedroom.AbvGr R^2: ", summary(N4)$adj.r.squared)
+paste("price~.                                                                   R^2: ", summary(N)$adj.r.squared)
+```
+The model includes the same set of predictors but the resulting R^2 is now
+=0.60= compared to the previous =0.56=.
+```{r Q6.2, fig.width=9, fig.height=9, cache=T}
+par(mfrow=c(2,2))
+plot(N)
+ggnostic(N)
+
+```
+
+\fb{
+
+Must correctly state whether or not one arrives at the same set of predictors using log(Lot.Area) as with Lot.Area, in the multiple regression model created using the chosen model selection method.
+
+
+}
+
+
+# Log Transform of Explanatory Variables
+
+Do you think it is better to log transform Lot.Area, in terms of assumptions for linear regression? Make graphs of the predicted values of log home price versus the true values of log home price for the regression models selected for Lot.Area and log(Lot.Area). Referencing these two plots, provide a written support that includes a quantitative justification for your answer in the first part of question 7.
+
+```{r Q7, fig.width=9, fig.height=5}
+#B, M
+
+BM <- data.frame(Observed = B$price, Predicted = fitted(M))
+
+g0 <- ggplot(BM, aes(x=Predicted, y=Observed)) + geom_point() + stat_smooth(method = "lm", col = "red") +
+	ggtitle("log(price) with Lot.Area") + geom_rug() + xlim(11, 13.5)
+
+
+
+#D, N
+DN <- data.frame(Observed = D$price, Predicted = fitted(N))
+
+g1 <- ggplot(DN, aes(x=Predicted, y=Observed)) + geom_point() + stat_smooth(method = "lm", col = "red") +
+		ggtitle("log(price) with log(Lot.Area)") + geom_rug()  + xlim(11, 13.5)
+
+multiplot(g0, g1, cols = 2)
+```
+
+Ideally all of the points should be close to the regression line. Both models
+have a similiar R^2 which means that the points are spread the same around the
+regression line for each of the models. The lower the R^2, the weaker the 
+goodnes of fit of the model. The points would be more foggy, dispersed away from
+the regression line. 
+
+Since the second model has a higher R^2 the points are more towards the regression
+line then in the first. 
+
+With the log transformation of Lot.Area the points are more evenly distributed
+along the regression line. If a clear pattern or trend can be detected, then 
+the model has room for improvement. 
+
+
+
+
+\fb{
+
+
+Must state whether or not log transformation of Lot.Area helps the multiple regression model. Must include two appropriate graphs, and include an explanation of the first answer that references the graphs (in other words, explain how the graphs support the answer)
+
+}
+
+
