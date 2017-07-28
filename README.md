@@ -1,2 +1,1 @@
-# statsr-capstone
-Bayesian Prediction of House Prices
+EDA_peer.md
