@@ -67,6 +67,7 @@ add_level <- function(x, lvl)
 	x[is.na(x)] <- lvl
 	x
 }
+
 add_mean<- function(x)
 {
 	m <- mean(x, na.rm=TRUE)
@@ -135,7 +136,7 @@ na_count
 
 FV <- as.data.frame(lapply(A, is.factor)) %>% tidyr::gather() %>% filter(value == TRUE)
 CV <- as.data.frame(lapply(A, is.factor)) %>% tidyr::gather() %>% filter(value == FALSE)
-
+FV
 
 for (i in FV[,1])
 {
@@ -209,18 +210,22 @@ nearZeroVar(isnum,  saveMetrics = T)
 
 lapply(A, function(x) length(unique(x))) < 2
 
-A <- subset(A, select = c(-Utilities))
+# A <- subset(A, select = c(-Utilities))
 ```
 
 ```{r, fig.width=9 }
-
-
 library(vcd)
-catcorrm <- function(vars, dat) sapply(vars, function(y) sapply(vars, function(x) assocstats(table(unlist(dat[,x]), unlist(dat[,y])))$cramer))
+catcorrm <- function(vars, dat) 
+	sapply(vars, function(y) 
+		sapply(vars, function(x) 
+			assocstats(table(unlist(dat[,x]), unlist(dat[,y])))$cramer))
 
 newrow <- c("price", TRUE)
 FV <- rbind(FV, newrow)
 
+FV[,1]
+colnames(A)
+FV
 
 cormat <- catcorrm(FV[,1], A)
 cormat[!is.finite(cormat)] <- 0
